@@ -8,3 +8,4 @@
   from = "/*"
   to = "/.netlify/functions/proxy/:splat"
   status = 200
+  force = true
