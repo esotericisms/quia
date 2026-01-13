@@ -57,6 +57,18 @@ exports.handler = async (event) => {
     const contentType = response.headers.get('content-type') || '';
     console.log('Content-Type:', contentType);
     
+    // Prepare response headers
+    const responseHeaders = {};
+    const multiValueHeaders = {};
+    
+    // Forward cookies using multiValueHeaders
+    const responseCookies = response.headers.raw()['set-cookie'];
+    if (responseCookies && responseCookies.length > 0) {
+      multiValueHeaders['set-cookie'] = responseCookies.map(cookie => 
+        cookie.replace(/Domain=[^;]+/gi, '').replace(/; Secure/gi, '')
+      );
+    }
+    
     // Handle redirects
     if (response.status >= 300 && response.status < 400) {
       let location = response.headers.get('location');
@@ -68,23 +80,12 @@ exports.handler = async (event) => {
           location = location.replace(`https://${TARGET_DOMAIN}`, '/.netlify/functions/proxy');
         }
         console.log('Modified redirect:', location);
-        
-        // Get cookies for redirect
-        const responseHeaders = {
-          'location': location
-        };
-        
-        const responseCookies = response.headers.raw()['set-cookie'];
-        if (responseCookies && responseCookies.length > 0) {
-          // Join multiple cookies with comma (Netlify format)
-          responseHeaders['set-cookie'] = responseCookies
-            .map(cookie => cookie.replace(/Domain=[^;]+/gi, '').replace(/; Secure/gi, ''))
-            .join(', ');
-        }
+        responseHeaders['location'] = location;
         
         return {
           statusCode: response.status,
           headers: responseHeaders,
+          multiValueHeaders: multiValueHeaders,
           body: ''
         };
       }
@@ -93,11 +94,12 @@ exports.handler = async (event) => {
     // For non-HTML content, just pass through
     if (!contentType.includes('text/html')) {
       const buffer = await response.arrayBuffer();
+      responseHeaders['content-type'] = contentType;
+      
       return {
         statusCode: response.status,
-        headers: {
-          'content-type': contentType
-        },
+        headers: responseHeaders,
+        multiValueHeaders: multiValueHeaders,
         body: Buffer.from(buffer).toString('base64'),
         isBase64Encoded: true
       };
@@ -159,22 +161,12 @@ exports.handler = async (event) => {
     const modifiedBody = $.html();
     console.log('Modified body length:', modifiedBody.length);
     
-    // Forward cookies from Quia
-    const responseCookies = response.headers.raw()['set-cookie'];
-    const responseHeaders = {
-      'content-type': 'text/html; charset=utf-8'
-    };
-    
-    if (responseCookies && responseCookies.length > 0) {
-      // Join multiple cookies with comma (Netlify format)
-      responseHeaders['set-cookie'] = responseCookies
-        .map(cookie => cookie.replace(/Domain=[^;]+/gi, '').replace(/; Secure/gi, ''))
-        .join(', ');
-    }
+    responseHeaders['content-type'] = 'text/html; charset=utf-8';
     
     return {
       statusCode: response.status,
       headers: responseHeaders,
+      multiValueHeaders: multiValueHeaders,
       body: modifiedBody
     };
   } catch (error) {
