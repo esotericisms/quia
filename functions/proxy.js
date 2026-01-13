@@ -69,11 +69,22 @@ exports.handler = async (event) => {
         }
         console.log('Modified redirect:', location);
         
+        // Get cookies for redirect
+        const responseHeaders = {
+          'location': location
+        };
+        
+        const responseCookies = response.headers.raw()['set-cookie'];
+        if (responseCookies && responseCookies.length > 0) {
+          // Join multiple cookies with comma (Netlify format)
+          responseHeaders['set-cookie'] = responseCookies
+            .map(cookie => cookie.replace(/Domain=[^;]+/gi, '').replace(/; Secure/gi, ''))
+            .join(', ');
+        }
+        
         return {
           statusCode: response.status,
-          headers: {
-            'location': location
-          },
+          headers: responseHeaders,
           body: ''
         };
       }
@@ -154,10 +165,11 @@ exports.handler = async (event) => {
       'content-type': 'text/html; charset=utf-8'
     };
     
-    if (responseCookies) {
-      responseHeaders['set-cookie'] = responseCookies.map(cookie => 
-        cookie.replace(/Domain=[^;]+/gi, '').replace(/; Secure/gi, '')
-      );
+    if (responseCookies && responseCookies.length > 0) {
+      // Join multiple cookies with comma (Netlify format)
+      responseHeaders['set-cookie'] = responseCookies
+        .map(cookie => cookie.replace(/Domain=[^;]+/gi, '').replace(/; Secure/gi, ''))
+        .join(', ');
     }
     
     return {
