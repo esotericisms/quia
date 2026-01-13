@@ -2,36 +2,40 @@ const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 
 const TARGET_DOMAIN = 'www.quia.com';
-const PROXY_BASE = ''; // Paths are relative to your Netlify site
 
 exports.handler = async (event) => {
-  let targetPath = event.path.replace('/.netlify/functions/proxy', '');
-  
-  // If root path, load Quia's main page
-  if (targetPath === '' || targetPath === '/') {
-    targetPath = '/pages/main.html';
-  }
-  
-  const targetUrl = `https://${TARGET_DOMAIN}${targetPath}${event.queryStringParameters ? '?' + new URLSearchParams(event.queryStringParameters).toString() : ''}`;
-  const method = event.httpMethod;
-  const headers = { 
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'accept-language': 'en-US,en;q=0.5'
-  };
-  
-  // Copy cookies from request
-  if (event.headers.cookie) {
-    headers.cookie = event.headers.cookie;
-  }
-
   try {
+    let targetPath = event.path.replace('/.netlify/functions/proxy', '');
+    
+    // If root path, load Quia's main page
+    if (targetPath === '' || targetPath === '/') {
+      targetPath = '/pages/main.html';
+    }
+    
+    const targetUrl = `https://${TARGET_DOMAIN}${targetPath}`;
+    console.log('Fetching:', targetUrl);
+    
+    const method = event.httpMethod;
+    const headers = { 
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.5'
+    };
+    
+    if (event.headers.cookie) {
+      headers.cookie = event.headers.cookie;
+    }
+
     const response = await fetch(targetUrl, {
       method,
       headers,
       body: method !== 'GET' && method !== 'HEAD' ? event.body : undefined,
       redirect: 'manual',
+      timeout: 10000
     });
+
+    console.log('Response status:', response.status);
+    console.log('Content-Type:', response.headers.get('content-type'));
 
     let body = await response.arrayBuffer();
     const contentType = response.headers.get('content-type') || '';
@@ -43,7 +47,8 @@ exports.handler = async (event) => {
       
       // Rewrite all URLs
       $('a[href], link[href], script[src], img[src], form[action], iframe[src]').each((i, el) => {
-        const attr = el.tagName === 'form' ? 'action' : el.tagName === 'iframe' ? 'src' : el.tagName === 'a' || el.tagName === 'link' ? 'href' : 'src';
+        const tagName = el.tagName.toLowerCase();
+        const attr = tagName === 'form' ? 'action' : (tagName === 'iframe' || tagName === 'script' || tagName === 'img') ? 'src' : 'href';
         let url = $(el).attr(attr);
         if (url && (url.startsWith('/') || url.startsWith(`https://${TARGET_DOMAIN}`) || url.startsWith(`http://${TARGET_DOMAIN}`))) {
           url = url.replace(`https://${TARGET_DOMAIN}`, '').replace(`http://${TARGET_DOMAIN}`, '');
@@ -118,10 +123,11 @@ exports.handler = async (event) => {
       isBase64Encoded: isBinary,
     };
   } catch (error) {
+    console.error('Proxy error:', error);
     return { 
       statusCode: 500, 
       headers: { 'content-type': 'text/html' },
-      body: `<h1>Proxy Error</h1><p>${error.message}</p>` 
+      body: `<h1>Proxy Error</h1><p>${error.message}</p><pre>${error.stack}</pre>` 
     };
   }
 };
